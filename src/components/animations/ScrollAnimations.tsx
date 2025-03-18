@@ -19,13 +19,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download } from "lucide-react";
+import { Download, FileDown } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 interface AnimationSettings {
   duration: number;
   ease: string;
   start: string;
   end: string;
+  scrub: boolean;
+  scrubAmount: number;
+  markers: boolean;
+  toggleActions: string;
 }
 
 const defaultSettings: AnimationSettings = {
@@ -33,6 +38,10 @@ const defaultSettings: AnimationSettings = {
   ease: "power2.out",
   start: "top 80%",
   end: "bottom 20%",
+  scrub: false,
+  scrubAmount: 1,
+  markers: false,
+  toggleActions: "play none none reverse",
 };
 
 const easeOptions = [
@@ -57,15 +66,25 @@ const endPositions = [
   "center center",
 ];
 
+const toggleActionsOptions = [
+  "play none none reverse",
+  "play none none none",
+  "play pause resume reset",
+  "play pause reverse pause",
+  "restart none none none",
+  "restart pause resume reset",
+];
+
 export default function ScrollAnimations() {
   const [settings, setSettings] = useState<AnimationSettings>(defaultSettings);
   const [activeTab, setActiveTab] = useState("fadeIn");
   const [generatedCode, setGeneratedCode] = useState("");
+  const scrollDemoRef = useRef<HTMLDivElement>(null);
 
   // Update settings
   const updateSetting = (
     key: keyof AnimationSettings,
-    value: string | number,
+    value: string | number | boolean,
   ) => {
     setSettings((prev) => ({
       ...prev,
@@ -76,7 +95,16 @@ export default function ScrollAnimations() {
   // Generate code based on current settings and animation type
   const generateCode = () => {
     let code = "";
-    const { duration, ease, start, end } = settings;
+    const {
+      duration,
+      ease,
+      start,
+      end,
+      scrub,
+      scrubAmount,
+      markers,
+      toggleActions,
+    } = settings;
 
     // Note: This code assumes ScrollTrigger plugin is available
     if (activeTab === "fadeIn") {
@@ -99,7 +127,9 @@ elements.forEach(element => {
       trigger: element,
       start: "${start}",
       end: "${end}",
-      toggleActions: "play none none reverse"
+      toggleActions: "${toggleActions}",
+      ${scrub ? `scrub: ${scrubAmount === 1 ? "true" : scrubAmount},` : ""}
+      ${markers ? "markers: true," : ""}
     }
   });
 });
@@ -122,7 +152,9 @@ elements.forEach(element => {
       trigger: element,
       start: "${start}",
       end: "${end}",
-      scrub: true // Makes the animation progress based on scroll position
+      scrub: ${scrub ? (scrubAmount === 1 ? "true" : scrubAmount) : "true"}, // Makes the animation progress based on scroll position
+      ${markers ? "markers: true," : ""}
+      ${!scrub ? `toggleActions: "${toggleActions}",` : ""}
     }
   });
 });
@@ -142,6 +174,9 @@ ScrollTrigger.create({
   trigger: container,
   start: "${start}",
   end: "${end}",
+  ${scrub ? `scrub: ${scrubAmount === 1 ? "true" : scrubAmount},` : ""}
+  ${markers ? "markers: true," : ""}
+  toggleActions: "${toggleActions}",
   onEnter: () => {
     gsap.from(elements, {
       opacity: 0,
@@ -169,6 +204,196 @@ ScrollTrigger.create({
   // Run animation when settings change
   useEffect(() => {
     generateCode();
+
+    // Set up scroll demo
+    if (scrollDemoRef.current) {
+      // Register ScrollTrigger plugin if needed
+      if (typeof gsap.registerPlugin === "function") {
+        try {
+          // Try to dynamically import ScrollTrigger
+          import("gsap/ScrollTrigger")
+            .then((module) => {
+              const ScrollTrigger = module.ScrollTrigger;
+              gsap.registerPlugin(ScrollTrigger);
+
+              // Add a small delay to prevent immediate triggering
+              setTimeout(() => {
+                setupScrollAnimations();
+              }, 500);
+            })
+            .catch(() => {
+              console.warn(
+                "ScrollTrigger plugin not available. Using basic animations instead.",
+              );
+              setupBasicAnimations();
+            });
+        } catch (e) {
+          console.warn("Error loading ScrollTrigger:", e);
+          setupBasicAnimations();
+        }
+      } else {
+        setupBasicAnimations();
+      }
+    }
+
+    function setupScrollAnimations() {
+      const {
+        duration,
+        ease,
+        start,
+        end,
+        scrub,
+        scrubAmount,
+        markers,
+        toggleActions,
+      } = settings;
+      const ScrollTrigger = (gsap as any).ScrollTrigger;
+
+      // Clear any existing animations
+      try {
+        if (ScrollTrigger && ScrollTrigger.getAll) {
+          ScrollTrigger.getAll().forEach((trigger: any) => trigger.kill());
+        }
+      } catch (e) {
+        console.warn("Error clearing ScrollTrigger animations:", e);
+      }
+      gsap.killTweensOf(".scroll-demo-item");
+
+      const container = scrollDemoRef.current;
+      if (!container) return;
+
+      const demoItems = container.querySelectorAll(".scroll-demo-item");
+
+      if (activeTab === "fadeIn") {
+        demoItems.forEach((item) => {
+          gsap.set(item, { opacity: 0, y: 50 });
+
+          gsap.to(item, {
+            opacity: 1,
+            y: 0,
+            duration,
+            ease,
+            scrollTrigger: {
+              trigger: item,
+              start,
+              end,
+              toggleActions,
+              scrub: scrub ? (scrubAmount === 1 ? true : scrubAmount) : false,
+              markers,
+            },
+          });
+        });
+      } else if (activeTab === "parallax") {
+        const layers = container.querySelectorAll(".parallax-layer");
+
+        layers.forEach((layer, index) => {
+          const speed = (index + 1) * -20; // Different speeds for different layers
+
+          gsap.to(layer, {
+            y: speed,
+            ease,
+            scrollTrigger: {
+              trigger: container,
+              start,
+              end,
+              scrub: scrub ? (scrubAmount === 1 ? true : scrubAmount) : true,
+              markers,
+              toggleActions: !scrub ? toggleActions : undefined,
+            },
+          });
+        });
+      } else if (activeTab === "stagger") {
+        const staggerItems = container.querySelectorAll(".stagger-item");
+
+        ScrollTrigger.create({
+          trigger: container,
+          start,
+          end,
+          scrub: scrub ? (scrubAmount === 1 ? true : scrubAmount) : false,
+          markers,
+          toggleActions,
+          onEnter: () => {
+            gsap.from(staggerItems, {
+              opacity: 0,
+              y: 50,
+              stagger: 0.1,
+              duration,
+              ease,
+            });
+          },
+          onLeaveBack: () => {
+            gsap.to(staggerItems, {
+              opacity: 0,
+              y: 50,
+              stagger: 0.05,
+              duration: duration / 2,
+            });
+          },
+        });
+      }
+    }
+
+    function setupBasicAnimations() {
+      // Fallback animations without ScrollTrigger
+      const container = scrollDemoRef.current;
+      if (!container) return;
+
+      const demoItems = container.querySelectorAll(".scroll-demo-item");
+
+      if (activeTab === "fadeIn") {
+        gsap.fromTo(
+          demoItems,
+          { opacity: 0, y: 50 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: settings.duration,
+            ease: settings.ease,
+            stagger: 0.2,
+          },
+        );
+      } else if (activeTab === "parallax") {
+        const layers = container.querySelectorAll(".parallax-layer");
+
+        layers.forEach((layer, index) => {
+          const speed = (index + 1) * -20;
+          gsap.to(layer, {
+            y: speed,
+            duration: settings.duration,
+            ease: settings.ease,
+          });
+        });
+      } else if (activeTab === "stagger") {
+        const staggerItems = container.querySelectorAll(".stagger-item");
+
+        gsap.fromTo(
+          staggerItems,
+          { opacity: 0, y: 50 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: settings.duration,
+            ease: settings.ease,
+            stagger: 0.1,
+          },
+        );
+      }
+    }
+
+    // Cleanup function
+    return () => {
+      if (typeof gsap.registerPlugin === "function") {
+        try {
+          const ScrollTrigger = (gsap as any).ScrollTrigger;
+          if (ScrollTrigger && ScrollTrigger.getAll) {
+            ScrollTrigger.getAll().forEach((trigger: any) => trigger.kill());
+          }
+        } catch (e) {
+          console.warn("Error cleaning up ScrollTrigger:", e);
+        }
+      }
+      gsap.killTweensOf(".scroll-demo-item");
+    };
   }, [settings, activeTab]);
 
   return (
@@ -199,86 +424,95 @@ ScrollTrigger.create({
                   <TabsTrigger value="stagger">Staggered</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="fadeIn" className="space-y-4">
-                  <div className="bg-muted p-6 rounded-lg">
-                    <h3 className="text-xl font-semibold mb-2">
-                      Fade In on Scroll
-                    </h3>
-                    <p>
-                      Elements fade in and move up as they enter the viewport.
-                    </p>
-                    <div className="mt-4 flex justify-center">
-                      <div className="w-16 h-16 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold">
-                        Fade
+                <TabsContent value={activeTab}>
+                  <div
+                    ref={scrollDemoRef}
+                    className="overflow-y-auto h-[400px] bg-muted/30 rounded-lg p-4 scroll-demo-container"
+                  >
+                    {activeTab === "fadeIn" && (
+                      <div className="space-y-8 py-8">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <div
+                            key={i}
+                            className="scroll-demo-item bg-gradient-to-r from-primary/20 to-primary/10 p-6 rounded-lg"
+                          >
+                            <h3 className="text-xl font-semibold mb-2">
+                              Scroll Item {i}
+                            </h3>
+                            <p className="text-muted-foreground">
+                              This element will fade in as you scroll down the
+                              page. Try scrolling to see the animation in
+                              action.
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  </div>
-                  <p className="text-muted-foreground text-sm">
-                    Note: Scroll animations require the ScrollTrigger plugin and
-                    can only be previewed in a full page context.
-                  </p>
-                </TabsContent>
+                    )}
 
-                <TabsContent value="parallax" className="space-y-4">
-                  <div className="bg-muted p-6 rounded-lg">
-                    <h3 className="text-xl font-semibold mb-2">
-                      Parallax Effect
-                    </h3>
-                    <p>
-                      Elements move at different speeds as the user scrolls,
-                      creating depth.
-                    </p>
-                    <div className="mt-4 flex justify-center space-x-4">
-                      <div className="w-16 h-16 bg-primary/30 rounded-lg flex items-center justify-center text-primary-foreground font-bold">
-                        Back
-                      </div>
-                      <div className="w-16 h-16 bg-primary/60 rounded-lg flex items-center justify-center text-primary-foreground font-bold">
-                        Mid
-                      </div>
-                      <div className="w-16 h-16 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold">
-                        Front
-                      </div>
-                    </div>
-                  </div>
-                  <p className="text-muted-foreground text-sm">
-                    Note: Parallax effects require the ScrollTrigger plugin with
-                    scrub enabled.
-                  </p>
-                </TabsContent>
-
-                <TabsContent value="stagger" className="space-y-4">
-                  <div className="bg-muted p-6 rounded-lg">
-                    <h3 className="text-xl font-semibold mb-2">
-                      Staggered Reveal
-                    </h3>
-                    <p>
-                      Multiple elements appear one after another when scrolled
-                      into view.
-                    </p>
-                    <div className="mt-4 flex justify-center space-x-2">
-                      {[1, 2, 3, 4].map((i) => (
-                        <div
-                          key={i}
-                          className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center text-primary-foreground font-bold"
-                        >
-                          {i}
+                    {activeTab === "parallax" && (
+                      <div className="relative h-[800px] overflow-hidden">
+                        <div className="sticky top-0 h-[400px] overflow-hidden">
+                          <div className="parallax-layer absolute inset-0 flex items-center justify-center bg-primary/10 text-2xl font-bold">
+                            Background Layer
+                          </div>
+                          <div className="parallax-layer absolute inset-0 flex items-center justify-center bg-transparent text-2xl font-bold">
+                            <div className="w-32 h-32 bg-primary/30 rounded-lg flex items-center justify-center">
+                              Middle Layer
+                            </div>
+                          </div>
+                          <div className="parallax-layer absolute inset-0 flex items-center justify-center bg-transparent text-2xl font-bold">
+                            <div className="w-24 h-24 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
+                              Front Layer
+                            </div>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                        <div className="h-[400px] flex items-center justify-center">
+                          <p className="text-center text-muted-foreground">
+                            Scroll back up to see the parallax effect again
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === "stagger" && (
+                      <div className="space-y-8 py-8 stagger-container">
+                        <h3 className="text-xl font-semibold mb-4 text-center">
+                          Staggered Elements
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                            <div
+                              key={i}
+                              className="stagger-item w-full aspect-square bg-primary/80 rounded-lg flex items-center justify-center text-primary-foreground font-bold text-xl"
+                            >
+                              {i}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-center text-muted-foreground">
+                          Scroll down to see more staggered elements
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-[200px]">
+                          {[9, 10, 11, 12, 13, 14, 15, 16].map((i) => (
+                            <div
+                              key={i}
+                              className="stagger-item w-full aspect-square bg-secondary/80 rounded-lg flex items-center justify-center text-secondary-foreground font-bold text-xl"
+                            >
+                              {i}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-muted-foreground text-sm">
-                    Note: Staggered animations work best with groups of similar
-                    elements.
-                  </p>
+
+                  <div className="flex justify-center mt-6">
+                    <p className="text-center text-muted-foreground">
+                      Scroll inside the box above to see the animations
+                    </p>
+                  </div>
                 </TabsContent>
               </Tabs>
-
-              <div className="flex justify-center mt-6">
-                <p className="text-center text-muted-foreground">
-                  Scroll animations can only be previewed in a full page context
-                  with the ScrollTrigger plugin.
-                </p>
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -359,6 +593,87 @@ ScrollTrigger.create({
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="scrub">Scrub Animation</Label>
+                  <Switch
+                    id="scrub"
+                    checked={settings.scrub}
+                    onCheckedChange={(checked) =>
+                      updateSetting("scrub", checked)
+                    }
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Ties animation progress to scroll position
+                </p>
+              </div>
+
+              {settings.scrub && (
+                <div className="space-y-2">
+                  <Label htmlFor="scrubAmount">
+                    Scrub Smoothness:{" "}
+                    {settings.scrubAmount === 1 ? "None" : settings.scrubAmount}
+                  </Label>
+                  <Slider
+                    id="scrubAmount"
+                    min={0.1}
+                    max={3}
+                    step={0.1}
+                    value={[settings.scrubAmount]}
+                    onValueChange={(value) =>
+                      updateSetting("scrubAmount", value[0])
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Higher values create smoother scrubbing (1 = no smoothing)
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="markers">Show Markers</Label>
+                  <Switch
+                    id="markers"
+                    checked={settings.markers}
+                    onCheckedChange={(checked) =>
+                      updateSetting("markers", checked)
+                    }
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Displays visual markers for trigger points (development only)
+                </p>
+              </div>
+
+              {!settings.scrub && (
+                <div className="space-y-2">
+                  <Label htmlFor="toggleActions">Toggle Actions</Label>
+                  <Select
+                    value={settings.toggleActions}
+                    onValueChange={(value) =>
+                      updateSetting("toggleActions", value)
+                    }
+                  >
+                    <SelectTrigger id="toggleActions">
+                      <SelectValue placeholder="Select toggle actions" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {toggleActionsOptions.map((action) => (
+                        <SelectItem key={action} value={action}>
+                          {action}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Controls how animation responds to scrolling (onEnter,
+                    onLeave, onEnterBack, onLeaveBack)
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -371,13 +686,34 @@ ScrollTrigger.create({
             <CardTitle>Generated Code</CardTitle>
             <CardDescription>Copy and paste into your project</CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => navigator.clipboard.writeText(generatedCode)}
-          >
-            <Download className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => navigator.clipboard.writeText(generatedCode)}
+              title="Copy to clipboard"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                const element = document.createElement("a");
+                const file = new Blob([generatedCode], {
+                  type: "text/javascript",
+                });
+                element.href = URL.createObjectURL(file);
+                element.download = `scroll-animation-${activeTab}.js`;
+                document.body.appendChild(element);
+                element.click();
+                document.body.removeChild(element);
+              }}
+              title="Download as file"
+            >
+              <FileDown className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <pre className="bg-muted p-4 rounded-md overflow-x-auto">

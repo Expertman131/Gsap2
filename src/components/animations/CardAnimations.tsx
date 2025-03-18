@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download } from "lucide-react";
+import { Download, FileDown } from "lucide-react";
 
 interface AnimationSettings {
   duration: number;
@@ -291,13 +291,34 @@ gsap.from(cards, {
             <CardTitle>Generated Code</CardTitle>
             <CardDescription>Copy and paste into your project</CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => navigator.clipboard.writeText(generatedCode)}
-          >
-            <Download className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => navigator.clipboard.writeText(generatedCode)}
+              title="Copy to clipboard"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                const element = document.createElement("a");
+                const file = new Blob([generatedCode], {
+                  type: "text/javascript",
+                });
+                element.href = URL.createObjectURL(file);
+                element.download = `card-animation-${activeTab}.js`;
+                document.body.appendChild(element);
+                element.click();
+                document.body.removeChild(element);
+              }}
+              title="Download as file"
+            >
+              <FileDown className="h-4 w-4" />
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <pre className="bg-muted p-4 rounded-md overflow-x-auto">
